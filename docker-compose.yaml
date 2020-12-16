@@ -1,0 +1,258 @@
+version: "3.5"
+
+services:
+  ethereum-authorisation:
+    build:
+      context: ./smaug-om/il-smart-contracts
+      dockerfile: Dockerfile
+    container_name: ethereum-authorisation
+    image: ethereum-authorisation:latest
+    networks:
+      ethereum-authorisation:
+        aliases:
+          - ethereum-authorisation
+    ports:
+      - "127.0.0.1:8546:8545"         # Expose port locally on host for testing
+  ethereum-marketplace:
+    build:
+      context: ./smaug-om/om-smart-contracts
+      dockerfile: Dockerfile
+    container_name: ethereum-marketplace
+    image: ethereum-marketplace:latest
+    networks:
+      ethereum-marketplace:
+        aliases:
+          - ethereum-marketplace
+    ports:
+      - "127.0.0.1:8545:8545"         # Expose port locally on host for testing
+  kafka-marketplace-broker:
+    container_name: kafka-marketplace-broker
+    depends_on:
+      - zookeeper-marketplace
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://kafka-marketplace-broker:19092,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP:-127.0.0.1}:9092
+      KAFKA_BROKER_ID: 1
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper-marketplace:2181"
+    image: confluentinc/cp-kafka:5.4.3
+    networks:
+      marketplace-broker:
+        aliases:
+          - kafka-marketplace-broker
+    ports:
+      - "127.0.0.1:9092:9092"           # Expose port locally on host for testing
+  il-agent:
+    build:
+      context: ./smaug-om/il-agent
+      dockerfile: Dockerfile
+    container_name: il-agent
+    depends_on:
+      - ethereum-authorisation
+      - ethereum-marketplace
+    entrypoint: /scripts/entrypoint
+    image: il-agent:latest
+    networks:
+      - ethereum-authorisation
+      - ethereum-marketplace
+    tty: true
+    volumes:
+      - ./entrypoints/dockerize:/scripts/dockerize:ro
+      - ./entrypoints/il-agent:/scripts/entrypoint:ro      
+  marketplace-agent:
+    build:
+      context: ./smaug-om/om-smart-contracts/demo
+      dockerfile: Dockerfile
+    container_name: marketplace-agent
+    depends_on:
+      - ethereum-marketplace
+      - il-agent
+      - om-backend
+    image: marketplace-agent:latest
+    networks:
+      - ethereum-marketplace
+      - om-backend
+    stdin_open: true
+    tty: true      
+  marketplace-listener:
+    container_name: marketplace-listener
+    depends_on:
+      - ethereum-marketplace
+      - kafka-marketplace-broker
+      - marketplace-listener-state-db
+    environment:
+      CONF: /conf.yaml      
+    image: eventeum/eventeum:0.9.0-RELEASE
+    networks:
+      ethereum-marketplace:
+      marketplace-broker:
+        aliases:
+          - marketplace-listener
+    ports:
+    - "127.0.0.1:8060:8060"           # Expose port locally on host for testing
+    volumes:
+      - ./config/eventeum/conf.yaml:/conf.yaml:ro
+  marketplace-listener-state-db:
+    container_name: marketplace-listener-state-db
+    image: mongo:4.0
+    networks:
+      marketplace-broker:
+        aliases:
+          - marketplace-listener-state-db
+    ports:
+      - "27017:27017"
+  om-backend:
+    build:
+      args:
+        EXPOSED_PORT: 61234
+      context: ./smaug-om/om-backend
+      dockerfile: Dockerfile
+    container_name: om-backend
+    depends_on:
+      - ethereum-marketplace
+      - marketplace-listener
+      - om-iaa
+      - om-pds
+      - semantic-representation
+    entrypoint: /scripts/entrypoint
+    environment:
+      CONFIG: MockedDevConfig
+      ETH_MARKETPLACE_NODE_ADDR: ws://ethereum-marketplace:8545
+      IAA_ENDPOINT_URL: http://IAA:9000
+      MARKETPLACE_BROKER_URL: kafka-marketplace-broker:19092
+      MOCK_DID: "True"
+      PDS_ENDPOINT_URL: http://PDS:9001
+      SR_URL: http://semantic-representation:5000
+    image: om-backend:latest
+    networks:
+      ethereum-marketplace:
+      marketplace-broker:
+      om-backend:
+        aliases:
+          - om-backend
+      om-iaa:
+      om-pds:
+    ports:
+        - "127.0.0.1:61234:61234"       # Expose port locally on host for testing
+    tty: true
+    volumes:
+      - ./entrypoints/dockerize:/scripts/dockerize:ro
+      - ./entrypoints/om-backend:/scripts/entrypoint:ro
+  om-iaa:
+    build:
+      args:
+        LISTENING_PORT: "11001"
+      context: ./smaug-om/om-iaa
+      dockerfile: Dockerfile
+    container_name: om-iaa
+    image: om-iaa:latest
+    networks:
+      om-iaa:
+        aliases:
+          - IAA
+    ports:                      # Expose port locally on host for testing
+      - "127.0.0.1:11001:9000"
+    tty: true
+  om-pds:
+    build:
+      args:
+        LISTENING_PORT: "10001"
+      context: ./smaug-om/om-pds
+      dockerfile: Dockerfile
+    container_name: om-pds
+    image: om-pds:latest
+    networks:
+      om-pds:
+        aliases:
+            - PDS
+    ports:                      # Expose port locally on host for testing
+      - "127.0.0.1:10001:9001"
+    tty: true
+  semantic-representation:
+    build:
+      context: ./smaug-om/semantic-representation
+      dockerfile: Dockerfile
+    container_name: semantic-representation
+    image: semantic-representation:latest
+    networks:
+      om-backend:
+        aliases:
+            - semantic-representation
+    ports:
+      - "127.0.0.1:5000:5000"         # Expose port locally on host for testing
+    tty: true      
+  sl-as-blockchain-agent:
+    build:
+      context: ./smaug-slo/sl-as-blockchain-agent
+      dockerfile: Dockerfile
+    container_name: sl-as-blockchain-agent
+    depends_on:
+      - ethereum-authorisation
+      - ethereum-marketplace
+      - il-agent
+      - sl-as-pds
+    image: sl-as-blockchain-agent:latest
+    networks:
+      - ethereum-authorisation
+      - ethereum-marketplace
+      - sl-as-pds
+    stdin_open: true
+    tty: true
+  sl-as-pds:
+    build:
+      args:
+        LISTENING_PORT: "9001"
+      context: ./smaug-slo/sl-as-pds
+      dockerfile: Dockerfile
+    container_name: sl-as-pds
+    depends_on:
+      - ethereum-authorisation
+    entrypoint: /scripts/entrypoint
+    image: sl-as-pds:latest
+    networks:
+      ethereum-authorisation:
+      sl-as-pds:
+        aliases:
+            - PDS
+    ports:                      # Expose port locally on host for testing
+      - "127.0.0.1:9001:9001"
+    tty: true
+    volumes:
+      - ./entrypoints/dockerize:/scripts/dockerize:ro
+      - ./entrypoints/sl-as-pds:/scripts/entrypoint:ro
+  zookeeper-marketplace:
+    container_name: zookeeper-marketplace
+    environment:
+      zk_id: "1"
+      ZOOKEEPER_CLIENT_PORT: 2181
+    image: confluentinc/cp-zookeeper:5.4.3
+    networks:
+      marketplace-broker:
+        aliases: 
+          - zookeeper-marketplace
+    ports:
+      - "2181:2181"
+
+networks:
+  ethereum-authorisation:
+    driver: bridge
+    name: ethereum-authorisation
+  ethereum-marketplace:
+    driver: bridge
+    name: ethereum-marketplace
+  marketplace-broker:
+    driver: bridge
+    name: marketplace-broker
+  om-backend:
+    driver: bridge
+    name: om-backend
+  om-iaa:
+    driver: bridge
+    name: om-iaa
+  om-pds:
+    driver: bridge
+    name: om-pds
+  sl-as-pds:
+    driver: bridge
+    name: sl-as-pds

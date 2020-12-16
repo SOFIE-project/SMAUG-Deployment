@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+/scripts/dockerize -wait tcp://ethereum-authorisation:8545
+python3 PDS/pds.py

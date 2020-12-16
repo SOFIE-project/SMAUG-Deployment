@@ -1,0 +1,6 @@
+[submodule "smaug-om"]
+	path = smaug-om
+	url = https://github.com/SOFIE-project/SMAUG-Marketplace.git
+[submodule "smaug-slo"]
+	path = smaug-slo
+	url = https://github.com/SOFIE-project/SMAUG-Owner.git

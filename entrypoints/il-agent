@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+/scripts/dockerize -wait tcp://ethereum-marketplace:8545 -wait tcp://ethereum-authorisation:8545
+python start_interledger.py config/SMAUG-Docker.cfg

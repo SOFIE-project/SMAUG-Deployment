@@ -1,0 +1,89 @@
+spring:
+  data:
+    mongodb:
+      host: marketplace-listener-state-db
+      port: 27017
+
+ethereum:
+  nodes:
+  - name: default
+    url: ws://ethereum-marketplace:8545
+  blockStrategy: PUBSUB
+
+eventFilters:
+  - id: RequestExtraAdded
+    contractAddress: "0xbcaAFEEA5F90d310f7B284c8348412DDc02C267b"
+    eventSpecification:
+      eventName: RequestExtraAdded
+      nonIndexedParameterDefinitions:
+        - position: 0
+          type: UINT256
+  - id: RequestClosed
+    contractAddress: "0xbcaAFEEA5F90d310f7B284c8348412DDc02C267b"
+    eventSpecification:
+      eventName: RequestClosed
+      nonIndexedParameterDefinitions:
+        - position: 0
+          type: UINT256      
+  - id: RequestDecided
+    contractAddress: "0xbcaAFEEA5F90d310f7B284c8348412DDc02C267b"
+    eventSpecification:
+      eventName: RequestDecided
+      nonIndexedParameterDefinitions:
+        - position: 0
+          type: UINT256
+        - position: 1
+          type: UINT256[]
+  - id: OfferAdded
+    contractAddress: "0xbcaAFEEA5F90d310f7B284c8348412DDc02C267b"
+    eventSpecification:
+      eventName: OfferAdded
+      nonIndexedParameterDefinitions:
+        - position: 0
+          type: UINT256
+        - position: 1
+          type: UINT256
+        - position: 2
+          type: ADDRESS
+  - id: OfferExtraAdded
+    contractAddress: "0xbcaAFEEA5F90d310f7B284c8348412DDc02C267b"
+    eventSpecification:
+      eventName: OfferExtraAdded
+      nonIndexedParameterDefinitions:
+        - position: 0
+          type: UINT256       
+
+broadcaster:
+  type: KAFKA
+  cache:
+    expirationMillis: 6000000
+  event:
+    confirmation:
+      numBlocksToWait: 0
+      numBlocksToWaitForMissingTx: 100
+      numBlocksToWaitBeforeInvalidating: 2
+  multiInstance: false
+  enableBlockNotifications: false
+
+eventStore:
+  type: DB
+  url: http://localhost:8081/api/rest/v1
+  eventPath: /event
+  latestBlockPath: /latestblock
+
+database:
+  type: MONGO
+
+zookeeper:
+  address: zookeeper-marketplace:2181
+
+kafka:
+  bootstrap:
+    addresses: kafka-marketplace-broker:19092
+  topic:
+    contractEvents: contract-events
+    blockEvents: block-events
+    eventeumEvents: eventeum-events
+    transactionEvents: transaction-events
+    partitions: 1
+    replicationSets: 1
